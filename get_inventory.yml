@@ -1,0 +1,99 @@
+---
+- name: Gather System Information
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Collect OS version information (Linux)
+      ansible.builtin.shell: cat /etc/os-release
+      when: ansible_os_family != 'Windows'
+      register: os_info_linux
+
+    - name: Collect OS version information (Windows)
+      ansible.windows.win_command: systeminfo | findstr /B /C:"OS Name" /C:"OS Version"
+      when: ansible_os_family == 'Windows'
+      register: os_info_windows
+
+    - name: Collect hard disk information (Linux)
+      ansible.builtin.command: df -hT
+      when: ansible_os_family != 'Windows'
+      register: disk_info_linux
+
+    - name: Collect hard disk information (Windows)
+      ansible.windows.win_shell: Get-PSDrive -PSProvider FileSystem
+      when: ansible_os_family == 'Windows'
+      register: disk_info_windows
+
+    - name: Collect RAM and swap capacity (Linux)
+      ansible.builtin.shell: free -h
+      when: ansible_os_family != 'Windows'
+      register: memory_info_linux
+
+    - name: Collect RAM capacity (Windows)
+      ansible.windows.win_shell: "(Get-WmiObject -Class Win32_ComputerSystem).TotalPhysicalMemory / 1GB"
+      when: ansible_os_family == 'Windows'
+      register: memory_info_windows
+
+    - name: Collect network interfaces information (Linux)
+      ansible.builtin.command: ip -br addr
+      when: ansible_os_family != 'Windows'
+      register: network_info_linux
+
+    - name: Collect network interfaces information (Windows)
+      ansible.windows.win_shell: "Get-NetIPConfiguration | Select-Object InterfaceAlias,IPv4Address"
+      when: ansible_os_family == 'Windows'
+      register: network_info_windows
+
+    - name: List services Linux)
+      ansible.builtin.command: |
+        systemctl list-units --type=service --state=running | grep -E "loaded active running"
+      when: ansible_os_family != 'Windows'
+      register: services_info_linux
+
+    - name: List services (Windows)
+      ansible.windows.win_shell: "Get-Service | Where-Object {$_.Status -eq 'Running'} | Select-Object DisplayName"
+      when: ansible_os_family == 'Windows'
+      register: services_info_windows
+
+    - name: Report gathered information
+      ansible.builtin.debug:
+        msg: |
+          ---
+          System Information for {{ inventory_hostname }}:
+
+          OS Version Information:
+          {% if ansible_os_family == 'Windows' %}
+          {{ os_info_windows.stdout }}
+          {% else %}
+          {{ os_info_linux.stdout }}
+          {% endif %}
+
+          Hard Disk Information:
+          {% if ansible_os_family == 'Windows' %}
+          {{ disk_info_windows.stdout }}
+          {% else %}
+          {{ disk_info_linux.stdout }}
+          {% endif %}
+
+          RAM/Swap Capacity:
+          {% if ansible_os_family == 'Windows' %}
+          {{ memory_info_windows.stdout }} GB
+          {% else %}
+          {{ memory_info_linux.stdout }}
+          {% endif %}
+
+          Network Interfaces:
+          {% if ansible_os_family == 'Windows' %}
+          {{ network_info_windows.stdout }}
+          {% else %}
+          {{ network_info_linux.stdout }}
+          {% endif %}
+
+          Running Services:
+          {% if ansible_os_family == 'Windows' %}
+          {{ services_info_windows.stdout }}
+          {% else %}
+          {{ services_info_linux.stdout }}
+          {% endif %}
+          ---
